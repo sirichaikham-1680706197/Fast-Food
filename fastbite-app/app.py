@@ -3,7 +3,8 @@ import sqlite3
 import os
 
 app = Flask(__name__)
-DB_FILE = 'database.db'
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_FILE = os.path.join(BASE_DIR, 'database.db')
 
 def get_db_connection():
     conn = sqlite3.connect(DB_FILE)

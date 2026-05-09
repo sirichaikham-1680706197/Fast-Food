@@ -6,8 +6,9 @@ DROP TABLE IF EXISTS users;
 
 CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL,
-    password TEXT NOT NULL
+    username TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL,
+    role TEXT DEFAULT 'customer'
 );
 
 CREATE TABLE products (
@@ -44,9 +45,11 @@ CREATE TABLE reviews (
     FOREIGN KEY(product_id) REFERENCES products(id)
 );
 
--- Insert dummy users
-INSERT INTO users (username, password) VALUES ('admin', 'admin');
-INSERT INTO users (username, password) VALUES ('guest', 'guest');
+-- Insert dummy users (passwords are hashed with werkzeug.security)
+-- Admin: password='admin'
+-- Guest: password='guest'
+INSERT INTO users (username, password, role) VALUES ('admin', 'pbkdf2:sha256:600000$XFG78QZtSbxa9GoJ$746164da95b2510958ba29016f31e6be3858f91d72c5ca24a53d87ad7578a4b4', 'admin');
+INSERT INTO users (username, password, role) VALUES ('guest', 'pbkdf2:sha256:600000$EdXQmMOKpAaSrQVg$863f77b196886baea85bd274a3fd6c757681fda06f58753a6edfe0d7909b7800', 'customer');
 
 -- Insert dummy products
 INSERT INTO products (name, price, category, image) VALUES 

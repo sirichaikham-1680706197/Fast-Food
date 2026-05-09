@@ -25,11 +25,78 @@ const submitReviewBtn = document.getElementById('submit-review-btn');
 
 // Initialize JS
 document.addEventListener('DOMContentLoaded', () => {
+    checkUserSession();
     fetchMenu();
     setupEventListeners();
 });
 
 // Fetch and Render Menu
+async function checkUserSession() {
+    try {
+        // Get current user info from Flask session via a new endpoint or check sessionStorage
+        const response = await fetch('/user-session');
+        if (response.ok) {
+            const user = await response.json();
+            updateUserUI(user);
+        } else {
+            updateUserUI(null);
+        }
+    } catch (error) {
+        console.log('No active session');
+        updateUserUI(null);
+    }
+}
+
+function updateUserUI(user) {
+    const usernameDisplay = document.getElementById('username-display');
+    const userDisplayFull = document.getElementById('user-display-full');
+    const loginLink = document.getElementById('login-link');
+    const adminLink = document.getElementById('admin-link');
+    const logoutBtn = document.getElementById('logout-btn');
+    
+    if (user) {
+        // User is logged in
+        usernameDisplay.textContent = user.username;
+        userDisplayFull.innerHTML = `<i class="fa-solid fa-check-circle text-green-500 mr-2"></i>${user.username}`;
+        
+        if (loginLink) loginLink.classList.add('hidden');
+        if (logoutBtn) logoutBtn.classList.remove('hidden');
+        
+        if (user.role === 'admin' && adminLink) {
+            adminLink.classList.remove('hidden');
+        }
+    } else {
+        // User is not logged in
+        if (usernameDisplay) usernameDisplay.textContent = '';
+        if (userDisplayFull) userDisplayFull.textContent = 'Not logged in';
+        
+        if (loginLink) loginLink.classList.remove('hidden');
+        if (adminLink) adminLink.classList.add('hidden');
+        if (logoutBtn) logoutBtn.classList.add('hidden');
+    }
+}
+
+async function handleLogout() {
+    try {
+        const response = await fetch('/logout', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (response.ok) {
+            showToast('Logged out successfully', 'success');
+            setTimeout(() => {
+                window.location.href = '/login';
+            }, 500);
+        }
+    } catch (error) {
+        console.error('Logout error:', error);
+        showToast('Error logging out', 'error');
+    }
+}
+
 async function fetchMenu() {
     try {
         const response = await fetch('/menu');

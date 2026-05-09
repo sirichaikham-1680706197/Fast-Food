@@ -1,22 +1,145 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from werkzeug.security import check_password_hash, generate_password_hash
 import sqlite3
 import os
+from functools import wraps
 
 app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, 'database.db')
+
+# Session Configuration
+app.config['SECRET_KEY'] = 'fastbite-secret-key-2024'  # Change in production
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['PERMANENT_SESSION_LIFETIME'] = 2592000  # 30 days
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
+def init_db():
+    """Initialize database from schema.sql"""
+    if os.path.exists(DB_FILE):
+        return
+    
+    conn = sqlite3.connect(DB_FILE)
+    with open(os.path.join(BASE_DIR, 'schema.sql'), 'r', encoding='utf-8') as f:
+        conn.executescript(f.read())
+    conn.commit()
+    conn.close()
+    print("Database initialized successfully")
+
+# Initialize Database
+init_db()
 
 def get_db_connection():
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     return conn
 
-# Frontend Routes
+# ============================================
+# AUTHENTICATION HELPERS & DECORATORS
+# ============================================
+
+def get_current_user():
+    """Get current logged-in user from session"""
+    if 'user_id' in session:
+        conn = get_db_connection()
+        user = conn.execute('SELECT * FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+        conn.close()
+        return dict(user) if user else None
+    return None
+
+def login_required(f):
+    """Decorator to require login"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def admin_required(f):
+    """Decorator to require admin role"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        
+        user = get_current_user()
+        if not user or user.get('role') != 'admin':
+            return redirect(url_for('index'))
+        
+        return f(*args, **kwargs)
+    return decorated_function
+
+# ============================================
+# AUTHENTICATION ROUTES
+# ============================================
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Handle user login"""
+    if request.method == 'POST':
+        data = request.json
+        username = data.get('username', '').strip()
+        password = data.get('password', '')
+        
+        # Validate input
+        if not username or not password:
+            return jsonify({'error': 'Username and password are required'}), 400
+        
+        conn = get_db_connection()
+        user = conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
+        conn.close()
+        
+        # Verify credentials
+        if user and check_password_hash(user['password'], password):
+            session.permanent = True
+            session['user_id'] = user['id']
+            session['username'] = user['username']
+            session['role'] = user['role']
+            
+            return jsonify({
+                'success': True,
+                'message': 'Login successful',
+                'redirect': '/admin' if user['role'] == 'admin' else '/'
+            }), 200
+        else:
+            return jsonify({'error': 'Invalid username or password'}), 401
+    
+    # GET request - show login page
+    if 'user_id' in session:
+        redirect_url = '/admin' if session.get('role') == 'admin' else '/'
+        return redirect(redirect_url)
+    
+    return render_template('login.html')
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    """Handle user logout"""
+    session.clear()
+    return jsonify({'success': True, 'message': 'Logged out successfully'}), 200
+
+@app.route('/user-session', methods=['GET'])
+def get_user_session():
+    """Get current user session info"""
+    user = get_current_user()
+    if user:
+        return jsonify({
+            'id': user['id'],
+            'username': user['username'],
+            'role': user['role']
+        }), 200
+    return jsonify({'error': 'Not authenticated'}), 401
+
+# ============================================
+# FRONTEND ROUTES
+# ============================================
 @app.route('/')
 def index():
     return render_template('index.html')
 
 @app.route('/admin')
+@admin_required
 def admin():
     return render_template('admin.html')
 
@@ -43,7 +166,9 @@ def create_order():
     data = request.json
     cart = data.get('cart', [])
     total_price = data.get('total_price', 0)
-    user_id = data.get('user_id', 2) # Default to guest user (id=2)
+    
+    # Get user_id from session, default to guest (id=2) if not logged in
+    user_id = session.get('user_id', 2)
 
     if not cart:
         return jsonify({'error': 'Cart is empty'}), 400
@@ -103,6 +228,7 @@ def add_review():
 
 # Admin APIs
 @app.route('/admin/stats', methods=['GET'])
+@admin_required
 def get_admin_stats():
     conn = get_db_connection()
     total_orders = conn.execute('SELECT COUNT(id) as total FROM orders').fetchone()['total']
@@ -124,6 +250,7 @@ def get_admin_stats():
     })
 
 @app.route('/admin/top-products', methods=['GET'])
+@admin_required
 def get_top_products():
     conn = get_db_connection()
     products = conn.execute('''

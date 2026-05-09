@@ -1,8 +1,52 @@
 document.addEventListener('DOMContentLoaded', () => {
+    checkAdminSession();
     fetchStats();
     fetchTopProducts();
     fetchOrders();
 });
+
+/**
+ * Check if user is logged in as admin
+ */
+async function checkAdminSession() {
+    try {
+        const response = await fetch('/user-session');
+        if (response.ok) {
+            const user = await response.json();
+            const usernameDisplay = document.getElementById('admin-username-display');
+            const userDisplayFull = document.getElementById('admin-user-display');
+            
+            if (usernameDisplay) usernameDisplay.textContent = user.username;
+            if (userDisplayFull) userDisplayFull.textContent = user.username;
+        }
+    } catch (error) {
+        console.log('Admin session check failed');
+    }
+}
+
+/**
+ * Handle admin logout
+ */
+async function handleAdminLogout() {
+    try {
+        const response = await fetch('/logout', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (response.ok) {
+            showToast('Logged out successfully', 'success');
+            setTimeout(() => {
+                window.location.href = '/login';
+            }, 500);
+        }
+    } catch (error) {
+        console.error('Logout error:', error);
+        showToast('Error logging out', 'error');
+    }
+}
 
 async function fetchStats() {
     try {
